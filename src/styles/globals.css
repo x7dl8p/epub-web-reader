@@ -122,50 +122,92 @@ html > body[data-scroll-locked] {
   border-color: var(--color-fd-border);
 }
 
-/* Two-page reading: split the chapter into two book-like columns with a gutter.
-   Collapses back to a single column on narrow screens where two would be unreadable. */
+/* Paginated two-page reading.
+
+   `column-fill: auto` at a fixed height makes overflow flow into further columns to
+   the RIGHT instead of downwards. The parent clips at exactly one screen width, and
+   JS translates this element by whole spreads — so the chapter is read as discrete
+   pages and the document itself never scrolls in either direction. */
+.epub-content.epub-paginated {
+  column-count: 1;
+  column-gap: 3.5rem;
+  column-fill: auto;
+  height: 100%;
+  text-align: justify;
+  hyphens: auto;
+  /* Columns must be free to overflow horizontally for paging to work. */
+  overflow: visible;
+  will-change: transform;
+}
+
 @media (min-width: 1024px) {
-  .epub-content.two-page-mode {
+  .epub-content.epub-paginated {
     column-count: 2;
-    column-gap: 3.5rem;
     column-rule: 1px solid var(--color-fd-border);
-    text-align: justify;
-    hyphens: auto;
-  }
-
-  /* Keep headings, images and quotes from being sliced across the gutter. */
-  .epub-content.two-page-mode h1,
-  .epub-content.two-page-mode h2,
-  .epub-content.two-page-mode h3,
-  .epub-content.two-page-mode h4,
-  .epub-content.two-page-mode h5,
-  .epub-content.two-page-mode h6 {
-    break-after: avoid;
-    break-inside: avoid;
-  }
-
-  .epub-content.two-page-mode img,
-  .epub-content.two-page-mode image,
-  .epub-content.two-page-mode svg,
-  .epub-content.two-page-mode blockquote,
-  .epub-content.two-page-mode table {
-    break-inside: avoid;
-  }
-
-  /* The first heading should span both columns like a chapter plate. */
-  .epub-content.two-page-mode > h1:first-child,
-  .epub-content.two-page-mode > h2:first-child {
-    column-span: all;
   }
 }
 
-/* 80% Reduced gap between top header & reader content */
+/* Trim the leading margin so the first line sits at the top of the page. */
+.epub-content.epub-paginated > :first-child {
+  margin-top: 0;
+}
+
+/* Keep headings, images and quotes from being sliced across a page break. */
+.epub-content.epub-paginated h1,
+.epub-content.epub-paginated h2,
+.epub-content.epub-paginated h3,
+.epub-content.epub-paginated h4,
+.epub-content.epub-paginated h5,
+.epub-content.epub-paginated h6 {
+  break-after: avoid;
+  break-inside: avoid;
+  margin-top: 1.2em;
+}
+
+.epub-content.epub-paginated img,
+.epub-content.epub-paginated image,
+.epub-content.epub-paginated svg,
+.epub-content.epub-paginated blockquote,
+.epub-content.epub-paginated table {
+  break-inside: avoid;
+}
+
+/* An image can never be taller than the page it sits on, or it would be clipped. */
+.epub-content.epub-paginated img,
+.epub-content.epub-paginated image,
+.epub-content.epub-paginated svg {
+  max-height: 80%;
+  margin: 1em auto;
+  object-fit: contain;
+}
+
+/* The vertical rhythm utilities add margins that break column alignment. */
+.epub-content.epub-paginated > * + * {
+  margin-top: 0;
+}
+
+/* Reader page shell owns its own margins, so the article shell must not add any of its
+   own — otherwise a margin of 0 still leaves an inset gutter instead of edge to edge. */
 #nd-page,
 #nd-page > article,
 article.fd-article,
 .fd-page {
   padding-top: 0.5rem !important;
+  padding-inline: 0 !important;
   margin-top: 0 !important;
+  max-width: none !important;
+}
+
+body:has(.epub-paginated) #nd-page,
+body:has(.epub-paginated) #nd-page > article,
+body:has(.epub-paginated) article.fd-article,
+body:has(.epub-paginated) .fd-page {
+  padding-bottom: 0 !important;
+}
+
+/* Paginated mode fills the screen exactly; never let the document itself scroll. */
+body:has(.epub-paginated) {
+  overflow: hidden;
 }
 
 /* Hide Search button in top navigation bar completely */
@@ -173,5 +215,13 @@ button[aria-label*="Search"],
 button:has(kbd),
 .fd-search-toggle,
 [data-search-toggle] {
+  display: none !important;
+}
+
+/* Hide Breadcrumb header above top reader header */
+.fd-breadcrumb,
+[aria-label="Breadcrumb"],
+[aria-label="breadcrumb"],
+.fd-page-breadcrumb {
   display: none !important;
 }

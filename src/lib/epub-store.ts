@@ -16,6 +16,7 @@ const PREFS_STORAGE_KEY = 'novel-reader-prefs-v2';
 export interface ReaderPrefs {
   fontSize: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   fontFamily: 'serif' | 'sans' | 'mono' | 'dyslexic';
+  fontWeight: 'light' | 'normal' | 'medium' | 'bold';
   lineHeight: 'tight' | 'normal' | 'relaxed' | 'loose';
   letterSpacing: 'tight' | 'normal' | 'wide' | 'wider';
   textAlign: 'left' | 'justify' | 'center';
@@ -24,6 +25,10 @@ export interface ReaderPrefs {
   showChapterNumbers: boolean;
   /** Render the chapter as two side-by-side newspaper columns on wide screens. */
   twoPageMode: boolean;
+  /** Left/right page margin in px. 0 = text runs edge to edge. */
+  marginX: number;
+  /** Top/bottom page margin in px. 0 = text runs edge to edge. */
+  marginY: number;
   /** Custom reading background color (hex). Empty string = use theme default. */
   bgColor: string;
   /** Custom reading text color (hex). Empty string = use theme default. */
@@ -33,6 +38,7 @@ export interface ReaderPrefs {
 export const DEFAULT_PREFS: ReaderPrefs = {
   fontSize: 'md',
   fontFamily: 'serif',
+  fontWeight: 'normal',
   lineHeight: 'relaxed',
   letterSpacing: 'normal',
   textAlign: 'left',
@@ -40,6 +46,8 @@ export const DEFAULT_PREFS: ReaderPrefs = {
   indent: true,
   showChapterNumbers: true,
   twoPageMode: false,
+  marginX: 34,
+  marginY: 11,
   bgColor: '',
   textColor: '',
 };

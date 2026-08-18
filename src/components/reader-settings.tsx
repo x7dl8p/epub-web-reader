@@ -225,13 +225,13 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
               </div>
             </div>
 
-            {/* Line Spacing & Letter Spacing */}
-            <div className="grid grid-cols-2 gap-2.5">
+            {/* Line Height, Letter Spacing & Font Boldness */}
+            <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-bold text-fd-muted-foreground uppercase tracking-wider">
                   Line Height
                 </label>
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-4 gap-1">
                   {(['tight', 'normal', 'relaxed', 'loose'] as const).map((lh) => (
                     <button
                       key={lh}
@@ -253,7 +253,7 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
                 <label className="text-[10px] font-bold text-fd-muted-foreground uppercase tracking-wider">
                   Letter Spacing
                 </label>
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-4 gap-1">
                   {(['tight', 'normal', 'wide', 'wider'] as const).map((ls) => (
                     <button
                       key={ls}
@@ -266,6 +266,28 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
                       }`}
                     >
                       {ls}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-fd-muted-foreground uppercase tracking-wider">
+                  Font Boldness
+                </label>
+                <div className="grid grid-cols-4 gap-1">
+                  {(['light', 'normal', 'medium', 'bold'] as const).map((fw) => (
+                    <button
+                      key={fw}
+                      type="button"
+                      onClick={() => update({ fontWeight: fw as ReaderPrefs['fontWeight'] })}
+                      className={`py-1 rounded-md text-[10px] font-medium transition-colors capitalize cursor-pointer border ${
+                        (prefs.fontWeight || 'normal') === fw
+                          ? 'border-fd-primary bg-fd-primary/10 text-fd-primary font-bold'
+                          : 'border-transparent bg-fd-secondary hover:bg-fd-accent text-fd-foreground'
+                      }`}
+                    >
+                      {fw}
                     </button>
                   ))}
                 </div>
@@ -300,10 +322,70 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
               </div>
             </div>
 
+            {/* Page Margins */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-fd-muted-foreground uppercase tracking-wider">
+                  Page Margins
+                </label>
+                <button
+                  type="button"
+                  onClick={() => update({ marginX: 0, marginY: 0 })}
+                  className="text-[10px] font-semibold text-fd-primary hover:underline cursor-pointer"
+                  title="Remove all margins"
+                >
+                  Edge to edge
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2 p-2 rounded-xl bg-fd-secondary/60 border border-fd-border">
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-fd-foreground">Left / Right</span>
+                    <span className="font-mono text-fd-muted-foreground tabular-nums">
+                      {prefs.marginX}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={160}
+                    step={2}
+                    value={prefs.marginX}
+                    onChange={(e) => update({ marginX: Number(e.target.value) })}
+                    className="w-full accent-fd-primary cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-fd-foreground">Top / Bottom</span>
+                    <span className="font-mono text-fd-muted-foreground tabular-nums">
+                      {prefs.marginY}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={120}
+                    step={2}
+                    value={prefs.marginY}
+                    onChange={(e) => update({ marginY: Number(e.target.value) })}
+                    className="w-full accent-fd-primary cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Content Width */}
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold text-fd-muted-foreground uppercase tracking-wider">
                 Column Width
+                {prefs.twoPageMode && (
+                  <span className="ms-1 normal-case font-medium opacity-70">
+                    (scroll mode only — pages use margins)
+                  </span>
+                )}
               </label>
               <div className="grid grid-cols-4 gap-1">
                 {(['narrow', 'normal', 'wide', 'full'] as const).map((w) => (

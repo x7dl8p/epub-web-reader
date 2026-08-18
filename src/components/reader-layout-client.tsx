@@ -67,10 +67,10 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
       meta.toc && meta.toc.length > 0
         ? meta.toc
         : meta.spine.map((s, i) => ({
-            id: s.id || String(i),
-            label: s.label || `Chapter ${i + 1}`,
-            href: s.href,
-          }));
+          id: s.id || String(i),
+          label: s.label || `Chapter ${i + 1}`,
+          href: s.href,
+        }));
 
     const showNumbers = prefs.showChapterNumbers !== false;
     const formatName = (label: string, idx: number) => {
