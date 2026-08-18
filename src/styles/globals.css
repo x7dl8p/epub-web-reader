@@ -2,6 +2,13 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
+@theme {
+  --font-serif: 'Lora', Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-dyslexic: 'OpenDyslexic', 'Comic Sans MS', sans-serif;
+}
+
 html {
   scrollbar-gutter: stable;
 }
@@ -9,4 +16,145 @@ html {
 html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;
+}
+
+.font-epub-serif {
+  font-family: var(--font-serif);
+}
+
+.font-dyslexic {
+  font-family: var(--font-dyslexic);
+}
+
+/* Sidebar layout and overflow constraints */
+#nd-sidebar,
+#nd-sidebar aside,
+#nd-sidebar > div,
+#nd-sidebar nav {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+#nd-sidebar a,
+#nd-sidebar button,
+#nd-sidebar p,
+#nd-sidebar span {
+  max-width: 100%;
+}
+
+/* Ensure sidebar items and titles truncate cleanly */
+#nd-sidebar a > span,
+#nd-sidebar button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* EPUB rendered HTML styles */
+.epub-content {
+  font-feature-settings: 'kern' 1, 'liga' 1;
+}
+
+.epub-content.indent-enabled p {
+  text-indent: 1.5em;
+  margin-bottom: 1em;
+}
+
+.epub-content.indent-disabled p {
+  text-indent: 0;
+  margin-bottom: 1.25em;
+}
+
+.epub-content p:first-of-type {
+  text-indent: 0;
+}
+
+.epub-content h1,
+.epub-content h2,
+.epub-content h3,
+.epub-content h4,
+.epub-content h5,
+.epub-content h6 {
+  margin-top: 2em;
+  margin-bottom: 1em;
+  font-weight: 700;
+  text-indent: 0 !important;
+  letter-spacing: -0.01em;
+  color: var(--color-fd-foreground);
+}
+
+.epub-content h1 {
+  font-size: 1.6em;
+  border-bottom: 1px solid var(--color-fd-border);
+  padding-bottom: 0.4em;
+}
+
+.epub-content h2 {
+  font-size: 1.35em;
+}
+
+.epub-content h3 {
+  font-size: 1.15em;
+}
+
+.epub-content img,
+.epub-content image,
+.epub-content svg {
+  max-width: 100%;
+  height: auto;
+  margin: 2em auto;
+  display: block;
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.epub-content blockquote {
+  border-left: 3px solid var(--color-fd-primary, currentColor);
+  padding-left: 1.25rem;
+  margin: 1.5em 0;
+  font-style: italic;
+  opacity: 0.9;
+  text-indent: 0 !important;
+}
+
+.epub-content hr {
+  margin: 2.5em 0;
+  border-color: var(--color-fd-border);
+}
+
+/* 80% Reduced gap between top header & reader content */
+#nd-page,
+#nd-page > article,
+article.fd-article,
+.fd-page {
+  padding-top: 0.5rem !important;
+  margin-top: 0 !important;
+}
+
+/* Hide Search button in top navigation bar completely */
+button[aria-label*="Search"],
+button:has(kbd),
+.fd-search-toggle,
+[data-search-toggle] {
+  display: none !important;
+}
+
+/* Make top header navigation non-sticky so it scrolls up naturally with chapter text */
+#nd-nav,
+header.fd-nav,
+header[data-fd-nav],
+.fd-nav,
+nav.fd-nav {
+  position: relative !important;
+  top: auto !important;
+}
+
+/* Push customization button to the far right end of navbar, directly to the left of sidebar panel button */
+#nd-nav nav,
+header.fd-nav nav,
+nav.fd-nav {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
 }

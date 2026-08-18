@@ -1,2 +1,4 @@
 allowBuilds:
-  esbuild: set this to true or false
+  core-js: true
+  es5-ext: true
+  esbuild: true

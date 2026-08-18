@@ -1,15 +1,10 @@
-import { Link } from 'waku';
+import { UploadZone } from '@/components/upload-zone';
+import { BookMarked } from 'lucide-react';
 
 export default function Home() {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center">
-      <h1 className="font-medium text-xl mb-4">Fumadocs on Waku.</h1>
-      <Link
-        to="/docs"
-        className="px-3 py-2 rounded-lg bg-fd-primary text-fd-primary-foreground font-medium text-sm mx-auto"
-      >
-        Open Docs
-      </Link>
+    <div className="flex-1 w-full max-w-5xl mx-auto p-4 sm:p-6">
+      <UploadZone />
     </div>
   );
 }
@@ -17,5 +12,5 @@ export default function Home() {
 export async function getConfig() {
   return {
     render: 'static',
-  };
+  } as const;
 }
