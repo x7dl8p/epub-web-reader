@@ -3,7 +3,8 @@
 import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { DocsLayout } from 'fumadocs-ui/layouts/docs';
 import { baseOptions } from '@/lib/layout.shared';
-import { loadCachedMeta, loadPrefs, type CachedBookMeta, type ReaderPrefs } from '@/lib/epub-store';
+import { loadCachedMeta, loadPrefs, savePrefs, type CachedBookMeta, type ReaderPrefs } from '@/lib/epub-store';
+import { removeCustomTheme } from '@/lib/theme-injector';
 import type { Root, Node } from 'fumadocs-core/page-tree';
 import { useRouter } from 'waku/router/client';
 import { BookOpen, Search, Sliders } from 'lucide-react';
@@ -144,7 +145,7 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
           className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity min-w-0 max-w-[170px] sm:max-w-[200px] overflow-hidden"
           title={meta?.title || 'Novel Reader'}
         >
-          <BookOpen className="w-4 h-4 text-fd-primary shrink-0" />
+          <BookOpen className="w-4 h-4 text-fd-foreground shrink-0" />
           <span className="truncate text-sm font-bold text-fd-foreground overflow-hidden text-ellipsis whitespace-nowrap block min-w-0">
             {meta?.title || 'Novel Reader'}
           </span>
@@ -161,7 +162,7 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
             className="p-1.5 rounded-xl hover:bg-fd-accent text-fd-muted-foreground hover:text-fd-foreground transition-colors cursor-pointer flex items-center justify-center border border-fd-border bg-fd-card/90 shadow-2xs shrink-0"
             title="Typography & Reader Settings"
           >
-            <Sliders className="w-4 h-4 text-fd-primary" />
+            <Sliders className="w-4 h-4" />
           </button>
         </div>
       ),
@@ -179,7 +180,7 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
             className="flex items-center justify-center p-1 hover:text-fd-foreground text-fd-muted-foreground transition-colors cursor-pointer"
             title="Reader Settings"
           >
-            <Sliders className="w-4 h-4 text-fd-primary" />
+            <Sliders className="w-4 h-4" />
           </span>
         ),
         url: '#',
@@ -197,7 +198,6 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
           defaultOpenLevel: 1,
           banner: (
             <div className="pt-1 pb-2 border-b border-fd-border">
-              {/* Live Chapter Search Bar */}
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fd-muted-foreground" />
                 <input
@@ -205,7 +205,7 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={`Search ${meta?.totalChapters || ''} chapters...`}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-fd-secondary text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary border border-transparent focus:border-fd-primary/50"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-fd-secondary placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary"
                 />
               </div>
 

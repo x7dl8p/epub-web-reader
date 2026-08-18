@@ -138,23 +138,3 @@ button:has(kbd),
 [data-search-toggle] {
   display: none !important;
 }
-
-/* Make top header navigation non-sticky so it scrolls up naturally with chapter text */
-#nd-nav,
-header.fd-nav,
-header[data-fd-nav],
-.fd-nav,
-nav.fd-nav {
-  position: relative !important;
-  top: auto !important;
-}
-
-/* Push customization button to the far right end of navbar, directly to the left of sidebar panel button */
-#nd-nav nav,
-header.fd-nav nav,
-nav.fd-nav {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  width: 100% !important;
-}

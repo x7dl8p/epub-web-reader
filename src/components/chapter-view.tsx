@@ -244,10 +244,10 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-16 gap-4 text-center px-4">
-            <div className="p-3 rounded-full bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400">
+            <div className="p-3 rounded-full bg-red-100/80 text-fd-error">
               <BookOpen className="w-6 h-6" />
             </div>
-            <p className="text-sm text-red-600 dark:text-red-400 max-w-md font-medium">{error}</p>
+            <p className="text-sm text-fd-error max-w-md font-medium">{error}</p>
             <button
               type="button"
               onClick={() => router.push('/')}
@@ -310,4 +310,6 @@ const DEFAULT_PREFS_CLIENT: ReaderPrefs = {
   maxWidth: 'normal',
   indent: true,
   showChapterNumbers: true,
+  bgColor: '',
+  textColor: '',
 };

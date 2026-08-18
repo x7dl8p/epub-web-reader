@@ -17,6 +17,10 @@ export interface ReaderPrefs {
   maxWidth: 'narrow' | 'normal' | 'wide' | 'full';
   indent: boolean;
   showChapterNumbers: boolean;
+  /** Custom reading background color (hex). Empty string = use theme default. */
+  bgColor: string;
+  /** Custom reading text color (hex). Empty string = use theme default. */
+  textColor: string;
 }
 
 export const DEFAULT_PREFS: ReaderPrefs = {
@@ -29,6 +33,8 @@ export const DEFAULT_PREFS: ReaderPrefs = {
   maxWidth: 'normal',
   indent: true,
   showChapterNumbers: true,
+  bgColor: '',
+  textColor: '',
 };
 
 const PREFS_STORAGE_KEY = 'novel-reader-prefs-v2';
@@ -73,6 +79,12 @@ async function getDB(): Promise<IDBPDatabase> {
       }
     },
   });
+}
+
+export async function updateCachedMeta(meta: CachedBookMeta): Promise<void> {
+  if (!isClient()) return;
+  const db = await getDB();
+  await db.put(STORE_META, meta, META_KEY_ID);
 }
 
 export async function saveBook(buffer: ArrayBuffer, meta: CachedBookMeta): Promise<void> {
