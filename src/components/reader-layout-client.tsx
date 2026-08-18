@@ -3,8 +3,7 @@
 import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { DocsLayout } from 'fumadocs-ui/layouts/docs';
 import { baseOptions } from '@/lib/layout.shared';
-import { loadCachedMeta, loadPrefs, savePrefs, type CachedBookMeta, type ReaderPrefs } from '@/lib/epub-store';
-import { removeCustomTheme } from '@/lib/theme-injector';
+import { getCachedMetaSync, loadCachedMeta, loadPrefs, type CachedBookMeta, type ReaderPrefs } from '@/lib/epub-store';
 import type { Root, Node } from 'fumadocs-core/page-tree';
 import { useRouter } from 'waku/router/client';
 import { BookOpen, Search, Sliders } from 'lucide-react';
@@ -12,7 +11,10 @@ import { ReaderSettingsModal } from './reader-settings';
 
 export function ReaderLayoutClient({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [meta, setMeta] = useState<CachedBookMeta | null>(null);
+  // Seed from the in-memory cache so a client-side navigation (which remounts this
+  // layout) paints the chapter list on the first frame instead of flashing empty
+  // while IndexedDB is re-read asynchronously.
+  const [meta, setMeta] = useState<CachedBookMeta | null>(() => getCachedMetaSync());
   const [searchQuery, setSearchQuery] = useState('');
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadPrefs());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -36,9 +38,19 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
       }
     };
 
+    // Switching books in the library must swap the chapter list under the reader.
+    const handleActiveBookChange = () => {
+      setMeta(getCachedMetaSync());
+      loadCachedMeta().then((cached) => {
+        if (cached) setMeta(cached);
+      });
+    };
+
     window.addEventListener('reader-prefs-changed', handlePrefsChange);
+    window.addEventListener('active-book-changed', handleActiveBookChange);
     return () => {
       window.removeEventListener('reader-prefs-changed', handlePrefsChange);
+      window.removeEventListener('active-book-changed', handleActiveBookChange);
     };
   }, []);
 

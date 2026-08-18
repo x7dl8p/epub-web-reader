@@ -4,18 +4,18 @@ import { useState, useRef, useEffect, type DragEvent, type ChangeEvent } from 'r
 import { useRouter } from 'waku/router/client';
 import {
   saveBook,
-  hasSavedBook,
-  loadCachedMeta,
-  loadPrefs,
-  clearBook,
-  updateCachedMeta,
+  listBooks,
+  deleteBook,
+  updateBookMeta,
+  setActiveBookId,
+  getActiveBookId,
   type CachedBookMeta,
+  type StoredBook,
 } from '@/lib/epub-store';
 import { parseEpubArchive } from '@/lib/epub-parser';
 import {
   BookOpen,
   UploadCloud,
-  ArrowRight,
   Loader2,
   Trash2,
   Plus,
@@ -28,58 +28,73 @@ import {
   Edit3,
 } from 'lucide-react';
 
+/** Per-file outcome shown in the upload modal while a batch is processing. */
+interface FileProgress {
+  name: string;
+  status: 'pending' | 'parsing' | 'done' | 'failed';
+  detail: string;
+}
+
+function formatSize(bytes: number): string {
+  if (!bytes) return '—';
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
+}
+
 export function UploadZone() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [savedBook, setSavedBook] = useState<{
-    meta: CachedBookMeta;
-    chapterIndex: number;
-  } | null>(null);
-  const [isCheckingSaved, setIsCheckingSaved] = useState(true);
+  const [books, setBooks] = useState<StoredBook[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(true);
 
   // Upload modal state
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState('');
+  const [fileProgress, setFileProgress] = useState<FileProgress[]>([]);
   const [errorDetails, setErrorDetails] = useState<{ message: string; log: string } | null>(null);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [copiedLog, setCopiedLog] = useState(false);
 
-  // 3-dots menu & edit modal state
-  const [isCardMenuOpen, setIsCardMenuOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // Per-card menu & edit modal state
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingBook, setEditingBook] = useState<StoredBook | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editAuthor, setEditAuthor] = useState('');
 
+  const refreshLibrary = async () => {
+    const stored = await listBooks();
+    setBooks(stored);
+    setActiveId(getActiveBookId());
+  };
+
   useEffect(() => {
-    async function checkSaved() {
-      try {
-        const exists = await hasSavedBook();
-        if (exists) {
-          const meta = await loadCachedMeta();
-          if (meta) {
-            const prefs = loadPrefs();
-            setSavedBook({
-              meta,
-              chapterIndex: prefs.chapterIndex || 0,
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error checking saved book:', err);
-      } finally {
-        setIsCheckingSaved(false);
-      }
-    }
-    checkSaved();
+    refreshLibrary().finally(() => setIsLoadingLibrary(false));
   }, []);
 
-  const handleFileProcess = async (fileOrBuffer: File | ArrayBuffer) => {
+  // Close any open card menu when clicking elsewhere on the page.
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [openMenuId]);
+
+  /**
+   * Parses and stores an entire batch. Files are handled one at a time so a
+   * 300 MB drop doesn't hold every decompressed archive in memory at once, and
+   * so one corrupt file cannot abort the rest of the batch.
+   */
+  const handleFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+
     setErrorDetails(null);
     setLoading(true);
-    setLoadingStep('Reading EPUB archive bytes...');
+    setFileProgress(
+      files.map((file) => ({ name: file.name, status: 'pending', detail: formatSize(file.size) }))
+    );
 
     const logMessages: string[] = [];
     const addLog = (msg: string) => {
@@ -88,55 +103,73 @@ export function UploadZone() {
       console.log(line);
     };
 
-    try {
-      let buffer: ArrayBuffer;
-      let filename = 'Uploaded Book';
-      let fileSizeMb = '0';
+    const updateProgress = (index: number, patch: Partial<FileProgress>) => {
+      setFileProgress((prev) =>
+        prev.map((entry, i) => (i === index ? { ...entry, ...patch } : entry))
+      );
+    };
 
-      if (fileOrBuffer instanceof File) {
-        filename = fileOrBuffer.name;
-        fileSizeMb = (fileOrBuffer.size / (1024 * 1024)).toFixed(2);
-        addLog(`Selected file: "${filename}" (${fileSizeMb} MB)`);
+    let succeeded = 0;
+    let lastSavedId: string | null = null;
+    const failures: string[] = [];
 
-        if (!filename.toLowerCase().endsWith('.epub')) {
-          throw new Error('Invalid file format. Please upload a valid .epub archive.');
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file) continue;
+
+      updateProgress(i, { status: 'parsing', detail: 'Decompressing…' });
+      addLog(`--- "${file.name}" (${formatSize(file.size)}) ---`);
+
+      try {
+        if (!file.name.toLowerCase().endsWith('.epub')) {
+          throw new Error('Not a .epub archive.');
         }
-        buffer = await fileOrBuffer.arrayBuffer();
-      } else {
-        buffer = fileOrBuffer;
-        addLog(`Received buffer payload`);
+
+        const buffer = await file.arrayBuffer();
+        const { meta } = await parseEpubArchive(buffer);
+        addLog(`Parsed "${meta.title}" by ${meta.creator || 'Unknown'} — ${meta.spine?.length || 0} spine items`);
+
+        if (!meta.spine || meta.spine.length === 0) {
+          throw new Error('EPUB contains no linear reading order (spine items not found).');
+        }
+
+        const id = await saveBook(buffer, meta);
+        if (id) lastSavedId = id;
+        addLog(`Stored in IndexedDB as ${id}`);
+
+        succeeded++;
+        updateProgress(i, {
+          status: 'done',
+          detail: `${meta.totalChapters} chapters`,
+        });
+      } catch (err: any) {
+        const errorMsg = err?.message || 'Unexpected parsing error.';
+        addLog(`ERROR: ${errorMsg}`);
+        if (err?.stack) addLog(`STACK TRACE:\n${err.stack}`);
+        failures.push(`${file.name}: ${errorMsg}`);
+        updateProgress(i, { status: 'failed', detail: errorMsg });
       }
+    }
 
-      setLoadingStep('Decompressing archive & reading container.xml...');
-      addLog(`Calling parseEpubArchive()...`);
-      const { meta } = await parseEpubArchive(buffer);
+    await refreshLibrary();
+    setLoading(false);
 
-      addLog(`Extracted metadata: title="${meta.title}", author="${meta.creator || 'Unknown'}"`);
-      addLog(`Spine count: ${meta.spine?.length || 0}, TOC count: ${meta.toc?.length || 0}`);
-
-      if (!meta.spine || meta.spine.length === 0) {
-        throw new Error('EPUB contains no linear reading order (spine items not found).');
-      }
-
-      setLoadingStep(`Saving "${meta.title}" to local IndexedDB storage...`);
-      addLog(`Writing book buffer and metadata to IndexedDB...`);
-      await saveBook(buffer, meta);
-      addLog(`Successfully stored in IndexedDB.`);
-
-      setLoadingStep('Navigating to reader...');
-      addLog(`Redirecting to /reader/0`);
-      router.push('/reader/0');
-    } catch (err: any) {
-      console.error('[UploadZone Error]:', err);
-      const errorMsg = err?.message || 'An unexpected error occurred while parsing the EPUB file.';
-      addLog(`ERROR: ${errorMsg}`);
-      if (err?.stack) addLog(`STACK TRACE:\n${err.stack}`);
-
+    if (failures.length > 0) {
       setErrorDetails({
-        message: errorMsg,
+        message:
+          succeeded > 0
+            ? `${succeeded} of ${files.length} books imported. ${failures.length} failed.`
+            : `Could not import ${failures.length === 1 ? 'the file' : 'any of the files'}.`,
         log: logMessages.join('\n'),
       });
-      setLoading(false);
+      return;
+    }
+
+    // Whole batch succeeded — open the last import straight away.
+    if (lastSavedId) {
+      setActiveBookId(lastSavedId);
+      setIsUploadOpen(false);
+      router.push('/reader/0');
     }
   };
 
@@ -153,39 +186,39 @@ export function UploadZone() {
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && e.dataTransfer.files[0]) {
-      handleFileProcess(e.dataTransfer.files[0]);
-    }
+    const dropped = Array.from(e.dataTransfer.files || []);
+    if (dropped.length > 0) handleFiles(dropped);
   };
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0 && e.target.files[0]) {
-      handleFileProcess(e.target.files[0]);
-    }
+    const selected = Array.from(e.target.files || []);
+    if (selected.length > 0) handleFiles(selected);
+    e.target.value = '';
   };
 
-  const handleClearSaved = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsCardMenuOpen(false);
-    if (confirm('Delete this novel and clear local offline storage?')) {
-      await clearBook();
-      setSavedBook(null);
-    }
+  const handleOpenBook = (book: StoredBook) => {
+    setActiveBookId(book.id);
+    setActiveId(book.id);
+    router.push(`/reader/${book.chapterIndex || 0}`);
+  };
+
+  const handleDeleteBook = async (book: StoredBook) => {
+    setOpenMenuId(null);
+    if (!confirm(`Delete "${book.meta.title}" from local storage?`)) return;
+    await deleteBook(book.id);
+    await refreshLibrary();
   };
 
   const handleSaveEditMeta = async () => {
-    if (!savedBook) return;
+    if (!editingBook) return;
     const updatedMeta: CachedBookMeta = {
-      ...savedBook.meta,
-      title: editTitle.trim() || savedBook.meta.title,
+      ...editingBook.meta,
+      title: editTitle.trim() || editingBook.meta.title,
       creator: editAuthor.trim(),
     };
-    await updateCachedMeta(updatedMeta);
-    setSavedBook({
-      ...savedBook,
-      meta: updatedMeta,
-    });
-    setIsEditModalOpen(false);
+    await updateBookMeta(editingBook.id, updatedMeta);
+    await refreshLibrary();
+    setEditingBook(null);
   };
 
   const copyLogsToClipboard = () => {
@@ -195,6 +228,8 @@ export function UploadZone() {
     setTimeout(() => setCopiedLog(false), 2000);
   };
 
+  const totalBytes = books.reduce((sum, book) => sum + (book.sizeBytes || 0), 0);
+
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col gap-3 py-1">
       {/* Main Upload Button - Full Width */}
@@ -202,104 +237,118 @@ export function UploadZone() {
         type="button"
         onClick={() => {
           setErrorDetails(null);
+          setFileProgress([]);
           setIsUploadOpen(true);
         }}
         className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-fd-primary text-fd-primary-foreground text-xs sm:text-sm font-bold hover:opacity-90 transition-opacity cursor-pointer shadow-2xs"
       >
         <Plus className="w-4 h-4" />
-        <span>Upload New Novel</span>
+        <span>Upload Novels</span>
       </button>
 
-      {/* CRM Strip: Active Stored Book */}
-      {isCheckingSaved ? (
+      {/* Library */}
+      {isLoadingLibrary ? (
         <div className="p-4 rounded-xl border border-fd-border bg-fd-card/40 flex items-center justify-center gap-2 text-fd-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin text-fd-primary" />
           <span className="text-xs font-semibold text-fd-foreground">Checking local storage...</span>
         </div>
-      ) : savedBook ? (
+      ) : books.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-[11px] font-bold uppercase tracking-wider text-fd-muted-foreground">
-              Stored Novels (1 Active)
+              Library ({books.length} {books.length === 1 ? 'Novel' : 'Novels'})
             </h2>
-            <span className="text-[10px] text-fd-muted-foreground">Persisted in IndexedDB</span>
+            <span className="text-[10px] text-fd-muted-foreground">
+              {formatSize(totalBytes)} in IndexedDB
+            </span>
           </div>
 
-          {/* Clickable Card */}
-          <div
-            onClick={() => router.push(`/reader/${savedBook.chapterIndex}`)}
-            className="group relative flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl border border-fd-border bg-fd-card hover:border-fd-primary/50 hover:bg-fd-accent/20 transition-all cursor-pointer shadow-2xs"
-          >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="p-1.5 rounded-lg bg-fd-primary/10 text-fd-primary shrink-0 group-hover:scale-105 transition-transform">
-                <BookOpen className="w-4 h-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="font-bold text-xs sm:text-sm text-fd-foreground truncate">
-                  {savedBook.meta.title}
-                </h3>
-                <p className="text-[11px] text-fd-muted-foreground truncate">
-                  {savedBook.meta.creator ? `Author: ${savedBook.meta.creator} • ` : ''}
-                  {savedBook.meta.totalChapters} Chs • Progress: Ch {savedBook.chapterIndex + 1} ({Math.round(((savedBook.chapterIndex + 1) / (savedBook.meta.totalChapters || 1)) * 100)}%)
-                </p>
-              </div>
-            </div>
+          {books.map((book) => {
+            const isActive = book.id === activeId;
+            const progressPercent = Math.round(
+              ((book.chapterIndex + 1) / (book.meta.totalChapters || 1)) * 100
+            );
 
-            {/* 3-Dot Options Button */}
-            <div
-              className="relative shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-            >
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsCardMenuOpen(!isCardMenuOpen);
-                }}
-                className="p-1.5 rounded-lg text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-accent transition-colors cursor-pointer"
-                title="Options"
+            return (
+              <div
+                key={book.id}
+                onClick={() => handleOpenBook(book)}
+                className={`group relative flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl border bg-fd-card hover:bg-fd-accent/20 transition-all cursor-pointer shadow-2xs ${
+                  isActive
+                    ? 'border-fd-primary/60 ring-1 ring-fd-primary/20'
+                    : 'border-fd-border hover:border-fd-primary/50'
+                }`}
               >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-
-              {/* Dropdown Menu */}
-              {isCardMenuOpen && (
-                <div
-                  className="absolute right-0 top-8 z-30 w-40 rounded-xl border border-fd-border bg-fd-card shadow-xl p-1 animate-in fade-in zoom-in-95 duration-100 flex flex-col"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsCardMenuOpen(false);
-                      setEditTitle(savedBook.meta.title);
-                      setEditAuthor(savedBook.meta.creator || '');
-                      setIsEditModalOpen(true);
-                    }}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-fd-accent text-fd-foreground transition-colors cursor-pointer text-left"
-                  >
-                    <Edit3 className="w-3.5 h-3.5 text-fd-primary" />
-                    <span>Edit Novel Info</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleClearSaved(e);
-                    }}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-red-500/10 text-red-500 transition-colors cursor-pointer text-left"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Novel</span>
-                  </button>
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="p-1.5 rounded-lg bg-fd-primary/10 text-fd-primary shrink-0 group-hover:scale-105 transition-transform">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <h3 className="font-bold text-xs sm:text-sm text-fd-foreground truncate">
+                        {book.meta.title}
+                      </h3>
+                      {isActive && (
+                        <span className="shrink-0 px-1.5 py-px rounded-full bg-fd-primary/15 text-fd-primary text-[9px] font-bold uppercase tracking-wide">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-fd-muted-foreground truncate">
+                      {book.meta.creator ? `${book.meta.creator} • ` : ''}
+                      {book.meta.totalChapters} Chs • Ch {book.chapterIndex + 1} ({progressPercent}%)
+                      {book.sizeBytes ? ` • ${formatSize(book.sizeBytes)}` : ''}
+                    </p>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
+
+                {/* 3-Dot Options Button */}
+                <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuId(openMenuId === book.id ? null : book.id);
+                    }}
+                    className="p-1.5 rounded-lg text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-accent transition-colors cursor-pointer"
+                    title="Options"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+
+                  {openMenuId === book.id && (
+                    <div
+                      className="absolute right-0 top-8 z-30 w-40 rounded-xl border border-fd-border bg-fd-card shadow-xl p-1 animate-in fade-in zoom-in-95 duration-100 flex flex-col"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          setEditingBook(book);
+                          setEditTitle(book.meta.title);
+                          setEditAuthor(book.meta.creator || '');
+                        }}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-fd-accent text-fd-foreground transition-colors cursor-pointer text-left"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-fd-primary" />
+                        <span>Edit Novel Info</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBook(book)}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-red-500/10 text-red-500 transition-colors cursor-pointer text-left"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Novel</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="p-5 rounded-xl border border-dashed border-fd-border bg-fd-card/40 flex flex-col items-center justify-center text-center gap-2">
@@ -307,15 +356,13 @@ export function UploadZone() {
             <BookOpen className="w-4 h-4" />
           </div>
           <div>
-            <p className="font-bold text-xs text-fd-foreground">No Novel Loaded Yet</p>
+            <p className="font-bold text-xs text-fd-foreground">No Novels Loaded Yet</p>
             <p className="text-[11px] text-fd-muted-foreground mt-0.5">
-              Click &quot;Upload New Novel&quot; above to drop an EPUB file and begin reading.
+              Click &quot;Upload Novels&quot; above to drop one or more EPUB files and begin reading.
             </p>
           </div>
         </div>
       )}
-
-      {/* CRM System Architecture Strips */}
 
       {/* Upload Modal Popup */}
       {isUploadOpen && (
@@ -331,8 +378,12 @@ export function UploadZone() {
                   <UploadCloud className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-fd-foreground leading-tight">Upload EPUB Book</h3>
-                  <p className="text-xs text-fd-muted-foreground">Select or drop a .epub file to start</p>
+                  <h3 className="font-bold text-base text-fd-foreground leading-tight">
+                    Upload EPUB Books
+                  </h3>
+                  <p className="text-xs text-fd-muted-foreground">
+                    Select or drop one or more .epub files
+                  </p>
                 </div>
               </div>
               <button
@@ -351,14 +402,16 @@ export function UploadZone() {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               onClick={() => !loading && fileInputRef.current?.click()}
-              className={`relative group cursor-pointer flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all duration-200 ${isDragging
+              className={`relative group cursor-pointer flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all duration-200 ${
+                isDragging
                   ? 'border-fd-primary bg-fd-primary/5 scale-[1.01]'
                   : 'border-fd-border hover:border-fd-primary/60 bg-fd-secondary/30 hover:bg-fd-accent/20'
-                } ${loading ? 'opacity-80 pointer-events-none' : ''}`}
+              } ${loading ? 'opacity-80 pointer-events-none' : ''}`}
             >
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept=".epub,application/epub+zip"
                 className="hidden"
                 onChange={handleInputChange}
@@ -368,9 +421,11 @@ export function UploadZone() {
               {loading ? (
                 <div className="flex flex-col items-center gap-3 py-4 text-center">
                   <Loader2 className="w-10 h-10 animate-spin text-fd-primary" />
-                  <p className="text-sm font-bold text-fd-foreground">{loadingStep}</p>
+                  <p className="text-sm font-bold text-fd-foreground">
+                    Importing {fileProgress.length} {fileProgress.length === 1 ? 'book' : 'books'}…
+                  </p>
                   <p className="text-xs text-fd-muted-foreground max-w-xs">
-                    Decompressing chapters, indexing table of contents, and saving offline...
+                    Decompressing chapters, indexing tables of contents, and saving offline...
                   </p>
                 </div>
               ) : (
@@ -380,25 +435,56 @@ export function UploadZone() {
                   </div>
                   <div>
                     <p className="font-bold text-sm text-fd-foreground">
-                      Drop EPUB file here, or <span className="text-fd-primary underline">browse files</span>
+                      Drop EPUB files here, or{' '}
+                      <span className="text-fd-primary underline">browse files</span>
                     </p>
                     <p className="text-xs text-fd-muted-foreground mt-1">
-                      Accepts standard .epub files (EPUB 2 / EPUB 3)
+                      Select multiple files at once — EPUB 2 and EPUB 3 supported
                     </p>
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Per-file batch progress */}
+            {fileProgress.length > 0 && (
+              <div className="mt-4 flex flex-col gap-1 max-h-44 overflow-y-auto">
+                {fileProgress.map((entry, i) => (
+                  <div
+                    key={`${entry.name}-${i}`}
+                    className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-fd-secondary/50 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {entry.status === 'done' ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      ) : entry.status === 'failed' ? (
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      ) : entry.status === 'parsing' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-fd-primary shrink-0" />
+                      ) : (
+                        <div className="w-3.5 h-3.5 rounded-full border border-fd-border shrink-0" />
+                      )}
+                      <span className="truncate text-fd-foreground font-medium">{entry.name}</span>
+                    </div>
+                    <span
+                      className={`shrink-0 text-[10px] ${
+                        entry.status === 'failed' ? 'text-red-500' : 'text-fd-muted-foreground'
+                      }`}
+                    >
+                      {entry.detail}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {errorDetails && (
               <div className="mt-4 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex flex-col gap-2.5">
                 <div className="flex items-start gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-red-500">Parsing Failed</p>
-                    <p className="text-xs text-red-500/90 mt-0.5">
-                      {errorDetails.message}
-                    </p>
+                    <p className="text-xs font-bold text-red-500">Import Incomplete</p>
+                    <p className="text-xs text-red-500/90 mt-0.5">{errorDetails.message}</p>
                   </div>
                 </div>
                 <button
@@ -429,8 +515,12 @@ export function UploadZone() {
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-fd-foreground leading-tight">EPUB Diagnostic Logs</h3>
-                  <p className="text-xs text-fd-muted-foreground">Error trace and environment diagnostics</p>
+                  <h3 className="font-bold text-base text-fd-foreground leading-tight">
+                    EPUB Diagnostic Logs
+                  </h3>
+                  <p className="text-xs text-fd-muted-foreground">
+                    Error trace and environment diagnostics
+                  </p>
                 </div>
               </div>
               <button
@@ -484,7 +574,7 @@ export function UploadZone() {
       )}
 
       {/* Edit Novel Info Modal */}
-      {isEditModalOpen && (
+      {editingBook && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div
             className="relative w-full max-w-sm p-5 rounded-2xl border border-fd-border bg-fd-card text-fd-foreground shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col gap-4"
@@ -497,7 +587,7 @@ export function UploadZone() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsEditModalOpen(false)}
+                onClick={() => setEditingBook(null)}
                 className="p-1 rounded-lg hover:bg-fd-accent text-fd-muted-foreground hover:text-fd-foreground transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -535,7 +625,7 @@ export function UploadZone() {
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-fd-border">
               <button
                 type="button"
-                onClick={() => setIsEditModalOpen(false)}
+                onClick={() => setEditingBook(null)}
                 className="px-3 py-1.5 rounded-lg border border-fd-border text-xs font-medium hover:bg-fd-accent transition-colors cursor-pointer"
               >
                 Cancel

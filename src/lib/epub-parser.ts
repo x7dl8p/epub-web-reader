@@ -48,9 +48,11 @@ class ChapterMemoryCache {
   }
 }
 
-// Global active reader session
+// Global active reader session — only ever holds one book at a time, tagged with the
+// library id it came from so a book switch can be detected and the caches dropped.
 let activeZip: JSZip | null = null;
 let activeMeta: CachedBookMeta | null = null;
+let activeBookId: string | null = null;
 const memoryCache = new ChapterMemoryCache();
 
 export async function parseEpubArchive(buffer: ArrayBuffer): Promise<{
@@ -111,6 +113,7 @@ export async function parseEpubArchive(buffer: ArrayBuffer): Promise<{
   const itemRegex = /<item\s+([^>]+)\/?>/gi;
   let itemMatch: RegExpExecArray | null;
   let coverHref: string | null = null;
+  let navHref: string | null = null;
 
   while ((itemMatch = itemRegex.exec(opfText)) !== null) {
     const attrs = itemMatch[1] || '';
@@ -131,11 +134,20 @@ export async function parseEpubArchive(buffer: ArrayBuffer): Promise<{
         mediaType,
       });
 
+      const properties = propertiesMatch && propertiesMatch[1] ? propertiesMatch[1] : '';
+
+      // Only treat an id containing "cover" as the cover when it is an actual image —
+      // otherwise a cover.xhtml page wins over the real cover-image item.
       if (
-        id.toLowerCase().includes('cover') ||
-        (propertiesMatch && propertiesMatch[1] && propertiesMatch[1].includes('cover-image'))
+        properties.includes('cover-image') ||
+        (id.toLowerCase().includes('cover') && mediaType.startsWith('image/'))
       ) {
         coverHref = normalizedHref;
+      }
+
+      // EPUB 3 nav document, declared via properties rather than by filename.
+      if (properties.split(/\s+/).includes('nav')) {
+        navHref = normalizedHref;
       }
     }
   }
@@ -192,9 +204,16 @@ export async function parseEpubArchive(buffer: ArrayBuffer): Promise<{
   }
 
   if (toc.length === 0) {
-    const navItem = Array.from(manifest.values()).find(
-      (item) => item.href.includes('nav') && (item.href.endsWith('.xhtml') || item.href.endsWith('.html'))
-    );
+    // EPUB 3 declares its TOC with properties="nav" rather than a filename convention,
+    // so prefer that and only fall back to guessing from the path.
+    const navItem =
+      navHref !== null
+        ? { href: navHref }
+        : Array.from(manifest.values()).find(
+            (item) =>
+              item.href.toLowerCase().includes('nav') ||
+              item.href.toLowerCase().includes('toc')
+          );
     if (navItem) {
       const navFile = zip.file(navItem.href) || zip.file(navItem.href.replace(/^\//, ''));
       if (navFile) {
@@ -243,18 +262,36 @@ export async function parseEpubArchive(buffer: ArrayBuffer): Promise<{
 
   activeZip = zip;
   activeMeta = meta;
+  activeBookId = null;
   memoryCache.clear();
 
   return { meta, zip };
 }
 
-export function setActiveSession(zip: JSZip, meta: CachedBookMeta) {
+export function setActiveSession(zip: JSZip, meta: CachedBookMeta, bookId?: string) {
+  // Switching to a different book must drop the previous book's chapter cache,
+  // otherwise chapter N of the old book is served for chapter N of the new one.
+  if (bookId && activeBookId && bookId !== activeBookId) {
+    memoryCache.clear();
+  }
   activeZip = zip;
   activeMeta = meta;
+  activeBookId = bookId ?? null;
 }
 
-export function getActiveSession(): { zip: JSZip | null; meta: CachedBookMeta | null } {
-  return { zip: activeZip, meta: activeMeta };
+export function getActiveSession(): {
+  zip: JSZip | null;
+  meta: CachedBookMeta | null;
+  bookId: string | null;
+} {
+  return { zip: activeZip, meta: activeMeta, bookId: activeBookId };
+}
+
+export function clearActiveSession() {
+  activeZip = null;
+  activeMeta = null;
+  activeBookId = null;
+  memoryCache.clear();
 }
 
 export async function loadChapterByIndex(

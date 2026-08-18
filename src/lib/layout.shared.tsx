@@ -8,10 +8,6 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       {
-        text: 'About',
-        url: '/about',
-      },
-      {
         text: 'Developer',
         url: '/developer',
       },

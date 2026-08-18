@@ -14,6 +14,7 @@ import {
   Hash,
   Indent,
   Palette,
+  Columns2,
   ChevronLeft,
   Check,
   RotateCcw,
@@ -339,6 +340,24 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
                   }`}
                 >
                   {prefs.showChapterNumbers ? 'On' : 'Off'}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-1.5 rounded-lg hover:bg-fd-secondary/50 transition-colors">
+                <div className="flex items-center gap-1.5">
+                  <Columns2 className="w-3.5 h-3.5 text-fd-muted-foreground" />
+                  <span className="text-xs font-semibold text-fd-foreground">Two-Page Reading</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => update({ twoPageMode: !prefs.twoPageMode })}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors cursor-pointer ${
+                    prefs.twoPageMode
+                      ? 'bg-fd-primary text-fd-primary-foreground'
+                      : 'bg-fd-secondary text-fd-muted-foreground border border-fd-border'
+                  }`}
+                >
+                  {prefs.twoPageMode ? 'On' : 'Off'}
                 </button>
               </div>
 

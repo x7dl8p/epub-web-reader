@@ -3,10 +3,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'waku/router/client';
 import {
+  getActiveBookId,
   loadBookBuffer,
   loadCachedMeta,
   loadPrefs,
-  savePrefs,
+  saveProgress,
+  DEFAULT_PREFS,
   type ReaderPrefs,
   type CachedBookMeta,
 } from '@/lib/epub-store';
@@ -35,7 +37,7 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
   const [error, setError] = useState<string | null>(null);
   const [chapter, setChapter] = useState<ExtractedChapter | null>(null);
   const [meta, setMeta] = useState<CachedBookMeta | null>(null);
-  const [prefs, setPrefs] = useState<ReaderPrefs>(DEFAULT_PREFS_CLIENT);
+  const [prefs, setPrefs] = useState<ReaderPrefs>(DEFAULT_PREFS);
 
   useEffect(() => {
     setPrefs(loadPrefs());
@@ -71,16 +73,26 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
       setError(null);
 
       try {
-        let { zip, meta: activeMeta } = getActiveSession();
+        const bookId = getActiveBookId();
+        if (!bookId) {
+          if (!isCancelled) {
+            setError('No book loaded in local storage. Please upload an EPUB first.');
+            setLoading(false);
+          }
+          return;
+        }
 
-        // Restore from IndexedDB if needed
-        if (!zip || !activeMeta) {
-          const cachedMeta = await loadCachedMeta();
-          const buffer = await loadBookBuffer();
+        let { zip, meta: activeMeta, bookId: sessionBookId } = getActiveSession();
+
+        // Restore from IndexedDB when there is no session yet, or when the session
+        // belongs to a different book than the one now selected in the library.
+        if (!zip || !activeMeta || sessionBookId !== bookId) {
+          const cachedMeta = await loadCachedMeta(bookId);
+          const buffer = await loadBookBuffer(bookId);
 
           if (!buffer || !cachedMeta) {
             if (!isCancelled) {
-              setError('No book loaded in local storage. Please upload an EPUB first.');
+              setError('This book is no longer in local storage. Please upload it again.');
               setLoading(false);
             }
             return;
@@ -88,7 +100,7 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
 
           zip = await JSZip.loadAsync(buffer);
           activeMeta = cachedMeta;
-          setActiveSession(zip, activeMeta);
+          setActiveSession(zip, activeMeta, bookId);
         }
 
         if (isCancelled) return;
@@ -103,7 +115,7 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
         if (!isCancelled) {
           setChapter(extracted);
           setLoading(false);
-          savePrefs({ chapterIndex: safeIndex });
+          saveProgress(bookId, safeIndex);
           window.scrollTo({ top: 0, behavior: 'instant' });
         }
       } catch (err: any) {
@@ -177,12 +189,21 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
     center: 'text-center',
   }[prefs.textAlign];
 
-  const maxWidthStyle = {
-    narrow: 'max-w-xl',
-    normal: 'max-w-2xl',
-    wide: 'max-w-3xl',
-    full: 'max-w-5xl',
-  }[prefs.maxWidth];
+  // Two-page mode splits the text into two columns, so the container needs roughly
+  // double the width to keep each column at a comfortable measure.
+  const maxWidthStyle = prefs.twoPageMode
+    ? {
+        narrow: 'max-w-3xl',
+        normal: 'max-w-5xl',
+        wide: 'max-w-6xl',
+        full: 'max-w-7xl',
+      }[prefs.maxWidth]
+    : {
+        narrow: 'max-w-xl',
+        normal: 'max-w-2xl',
+        wide: 'max-w-3xl',
+        full: 'max-w-5xl',
+      }[prefs.maxWidth];
 
   const fontFamilyStyle = {
     serif: 'font-serif font-epub-serif',
@@ -261,7 +282,7 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
             <div
               className={`epub-content transition-all duration-150 ${fontSizeStyle} ${lineHeightStyle} ${letterSpacingStyle} ${textAlignStyle} ${fontFamilyStyle} ${
                 prefs.indent ? 'indent-enabled' : 'indent-disabled'
-              }`}
+              } ${prefs.twoPageMode ? 'two-page-mode' : ''}`}
               dangerouslySetInnerHTML={{ __html: chapter?.html || '' }}
             />
           </DocsBody>
@@ -300,16 +321,3 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
   );
 }
 
-const DEFAULT_PREFS_CLIENT: ReaderPrefs = {
-  chapterIndex: 0,
-  fontSize: 'md',
-  fontFamily: 'serif',
-  lineHeight: 'relaxed',
-  letterSpacing: 'normal',
-  textAlign: 'left',
-  maxWidth: 'normal',
-  indent: true,
-  showChapterNumbers: true,
-  bgColor: '',
-  textColor: '',
-};
