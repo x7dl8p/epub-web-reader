@@ -207,7 +207,7 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
   return (
     <>
       <DocsLayout
-        key={searchQuery ? `search-${searchQuery}` : meta?.title || 'layout'}
+        key={meta?.title || 'layout'}
         {...customizedOptions}
         tree={tree}
         sidebar={{

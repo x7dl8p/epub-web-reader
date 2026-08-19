@@ -342,16 +342,8 @@ export function ChapterView({ chapterParam }: { chapterParam: string }) {
     center: 'text-center',
   }[prefs.textAlign];
 
-  // In paginated mode the page margins define the text box, so no max-width cap is
-  // applied — otherwise margin 0 would still sit centred instead of edge to edge.
-  const maxWidthStyle = paginated
-    ? 'max-w-none'
-    : {
-        narrow: 'max-w-xl',
-        normal: 'max-w-2xl',
-        wide: 'max-w-3xl',
-        full: 'max-w-none',
-      }[prefs.maxWidth];
+  // Reader container is full-width by default, managed by page margin sliders
+  const maxWidthStyle = 'max-w-none';
 
   const fontFamilyStyle = {
     serif: 'font-serif font-epub-serif',

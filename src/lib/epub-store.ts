@@ -42,7 +42,7 @@ export const DEFAULT_PREFS: ReaderPrefs = {
   lineHeight: 'relaxed',
   letterSpacing: 'normal',
   textAlign: 'left',
-  maxWidth: 'normal',
+  maxWidth: 'full',
   indent: true,
   showChapterNumbers: true,
   twoPageMode: false,

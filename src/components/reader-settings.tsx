@@ -377,33 +377,7 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
               </div>
             </div>
 
-            {/* Content Width */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold text-fd-muted-foreground uppercase tracking-wider">
-                Column Width
-                {prefs.twoPageMode && (
-                  <span className="ms-1 normal-case font-medium opacity-70">
-                    (scroll mode only — pages use margins)
-                  </span>
-                )}
-              </label>
-              <div className="grid grid-cols-4 gap-1">
-                {(['narrow', 'normal', 'wide', 'full'] as const).map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => update({ maxWidth: w })}
-                    className={`py-1 rounded-md text-[10px] font-medium transition-colors capitalize cursor-pointer border ${
-                      prefs.maxWidth === w
-                        ? 'border-fd-primary bg-fd-primary/10 text-fd-primary font-bold'
-                        : 'border-transparent bg-fd-secondary hover:bg-fd-accent text-fd-foreground'
-                    }`}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-            </div>
+
 
             {/* Toggles */}
             <div className="flex flex-col gap-1.5 pt-2 border-t border-fd-border">
