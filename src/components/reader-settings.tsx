@@ -89,7 +89,7 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
     <div className="fixed inset-0 z-50 pointer-events-none flex justify-start items-end sm:items-stretch">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 pointer-events-auto bg-black/20 transition-opacity"
+        className="fixed inset-0 pointer-events-auto bg-black/50 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 

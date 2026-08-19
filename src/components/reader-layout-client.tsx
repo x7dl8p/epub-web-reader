@@ -63,14 +63,12 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
       };
     }
 
-    const items =
-      meta.toc && meta.toc.length > 0
-        ? meta.toc
-        : meta.spine.map((s, i) => ({
-          id: s.id || String(i),
-          label: s.label || `Chapter ${i + 1}`,
-          href: s.href,
-        }));
+    // Always map from spine items so chapter index i corresponds 1:1 with /reader/${i}
+    const items = meta.spine.map((s, i) => ({
+      id: s.id || String(i),
+      label: s.label || `Chapter ${i + 1}`,
+      href: s.href,
+    }));
 
     const showNumbers = prefs.showChapterNumbers !== false;
     const formatName = (label: string, idx: number) => {
@@ -79,12 +77,17 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
 
     const query = searchQuery.trim().toLowerCase();
 
-    // If searching, return filtered flat list
+    // If searching, return filtered flat list across ALL chapters in the book
     if (query) {
       const filtered: Node[] = [];
       items.forEach((item, idx) => {
         const label = item.label || `Chapter ${idx + 1}`;
-        if (label.toLowerCase().includes(query) || String(idx + 1).includes(query)) {
+        const chapterNum = String(idx + 1);
+        if (
+          label.toLowerCase().includes(query) ||
+          chapterNum === query ||
+          chapterNum.includes(query)
+        ) {
           filtered.push({
             type: 'page',
             name: formatName(label, idx),
@@ -204,6 +207,7 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
   return (
     <>
       <DocsLayout
+        key={searchQuery ? `search-${searchQuery}` : meta?.title || 'layout'}
         {...customizedOptions}
         tree={tree}
         sidebar={{
