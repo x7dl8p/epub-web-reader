@@ -349,7 +349,7 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
                   <input
                     type="range"
                     min={0}
-                    max={160}
+                    max={500}
                     step={2}
                     value={prefs.marginX}
                     onChange={(e) => update({ marginX: Number(e.target.value) })}
@@ -367,7 +367,7 @@ export function ReaderSettingsModal({ isOpen, onClose }: ReaderSettingsModalProp
                   <input
                     type="range"
                     min={0}
-                    max={120}
+                    max={500}
                     step={2}
                     value={prefs.marginY}
                     onChange={(e) => update({ marginY: Number(e.target.value) })}
