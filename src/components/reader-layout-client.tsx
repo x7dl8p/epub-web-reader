@@ -12,18 +12,21 @@ import {
 } from '@/lib/epub-store';
 import type { Root, Node } from 'fumadocs-core/page-tree';
 import { useRouter } from 'waku/router/client';
-import { BookOpen, Search, Sliders, X } from 'lucide-react';
+import { BookOpen, Search, Sliders } from 'lucide-react';
 import { ReaderSettingsModal } from './reader-settings';
+import { SearchDialog } from './search-dialog';
 
 export function ReaderLayoutClient({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [meta, setMeta] = useState<CachedBookMeta | null>(() => getCachedMetaSync());
-  const [searchQuery, setSearchQuery] = useState('');
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadPrefs());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
-    loadCachedMeta().then((cached) => { if (cached) setMeta(cached); });
+    loadCachedMeta().then((cached) => {
+      if (cached) setMeta(cached);
+    });
     setPrefs(loadPrefs());
 
     const onPrefs = (e: Event) => {
@@ -32,44 +35,35 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
     };
     const onBookChange = () => {
       setMeta(getCachedMetaSync());
-      loadCachedMeta().then((cached) => { if (cached) setMeta(cached); });
+      loadCachedMeta().then((cached) => {
+        if (cached) setMeta(cached);
+      });
+    };
+
+    // Keyboard shortcut for Cmd+K / Ctrl+K
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      }
     };
 
     window.addEventListener('reader-prefs-changed', onPrefs);
     window.addEventListener('active-book-changed', onBookChange);
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('reader-prefs-changed', onPrefs);
       window.removeEventListener('active-book-changed', onBookChange);
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, []);
 
-  // Full chapter list from spine, index = URL param
-  const allChapters = useMemo(() => {
-    if (!meta) return [];
-    const showNumbers = prefs.showChapterNumbers !== false;
-    return meta.spine.map((s, i) => ({
-      idx: i,
-      label: showNumbers
-        ? `${i + 1}. ${s.label || `Chapter ${i + 1}`}`
-        : s.label || `Chapter ${i + 1}`,
-    }));
-  }, [meta, prefs.showChapterNumbers]);
-
-  // Filtered results rendered directly in the sidebar banner (bypasses DocsLayout tree cache)
-  const searchResults = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return null;
-    return allChapters.filter(({ idx, label }) =>
-      label.toLowerCase().includes(q) || String(idx + 1).includes(q)
-    );
-  }, [allChapters, searchQuery]);
-
-  // Static tree for DocsLayout (never changes during search, avoids stale cache issue)
+  // Static tree for DocsLayout
   const tree = useMemo<Root>(() => {
     if (!meta) return { name: 'Table of Contents', children: [] };
 
     const showNumbers = prefs.showChapterNumbers !== false;
-    const fmt = (label: string, i: number) => showNumbers ? `${i + 1}. ${label}` : label;
+    const fmt = (label: string, i: number) => (showNumbers ? `${i + 1}. ${label}` : label);
     const items = meta.spine;
 
     if (items.length > 60) {
@@ -122,7 +116,10 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
         <div className="ms-auto flex items-center justify-end shrink-0">
           <button
             type="button"
-            onClick={(e) => { e.preventDefault(); setIsSettingsOpen(true); }}
+            onClick={(e) => {
+              e.preventDefault();
+              setIsSettingsOpen(true);
+            }}
             className="p-1.5 rounded-xl hover:bg-fd-accent text-fd-muted-foreground hover:text-fd-foreground transition-colors cursor-pointer flex items-center justify-center border border-fd-border bg-fd-card/90 shadow-2xs shrink-0"
             title="Typography & Reader Settings"
           >
@@ -137,7 +134,10 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
         text: 'Reader Settings',
         icon: (
           <span
-            onClick={(e) => { e.preventDefault(); setIsSettingsOpen(true); }}
+            onClick={(e) => {
+              e.preventDefault();
+              setIsSettingsOpen(true);
+            }}
             className="flex items-center justify-center p-1 hover:text-fd-foreground text-fd-muted-foreground transition-colors cursor-pointer"
             title="Reader Settings"
           >
@@ -160,57 +160,28 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
           defaultOpenLevel: 1,
           banner: (
             <div className="pb-2 border-b border-fd-border">
-              {/* Search input */}
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fd-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={`Search ${meta?.totalChapters || ''} chapters...`}
-                  className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg bg-fd-secondary placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-fd-muted-foreground hover:text-fd-foreground cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
+              {/* Fumadocs Search Popup Dialog Trigger */}
+              <button
+                type="button"
+                onClick={() => setIsSearchOpen(true)}
+                className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl border border-fd-border bg-fd-secondary/80 hover:bg-fd-accent text-xs text-fd-muted-foreground hover:text-fd-foreground transition-all cursor-pointer shadow-2xs group"
+              >
+                <div className="flex items-center gap-2">
+                  <Search className="w-3.5 h-3.5 text-fd-muted-foreground group-hover:text-fd-foreground transition-colors" />
+                  <span>Search (min 3 letters)...</span>
+                </div>
+                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-semibold rounded border border-fd-border bg-fd-card text-fd-muted-foreground">
+                  ⌘K
+                </kbd>
+              </button>
 
-              {/* Book meta */}
-              {!searchQuery && meta?.totalChapters && (
+              {meta?.totalChapters && (
                 <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-fd-muted-foreground">
                   <span>{meta.totalChapters} chapters</span>
                   {meta.creator && (
                     <span className="truncate max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">
                       {meta.creator}
                     </span>
-                  )}
-                </div>
-              )}
-
-              {/* Search results rendered HERE — bypasses DocsLayout tree caching */}
-              {searchResults !== null && (
-                <div className="mt-2 flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
-                  {searchResults.length === 0 ? (
-                    <p className="text-[11px] text-fd-muted-foreground px-1 py-2 text-center">
-                      No chapters found
-                    </p>
-                  ) : (
-                    searchResults.map(({ idx, label }) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => { router.push(`/reader/${idx}`); setSearchQuery(''); }}
-                        className="text-left text-xs px-2 py-1.5 rounded-md hover:bg-fd-accent text-fd-foreground transition-colors cursor-pointer truncate"
-                      >
-                        {label}
-                      </button>
-                    ))
                   )}
                 </div>
               )}
@@ -221,9 +192,18 @@ export function ReaderLayoutClient({ children }: { children: ReactNode }) {
         {children}
       </DocsLayout>
 
+      {/* Reader Settings Drawer */}
       <ReaderSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Fumadocs-style Search Popup Modal */}
+      <SearchDialog
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        meta={meta}
+        prefs={prefs}
       />
     </>
   );

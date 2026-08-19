@@ -91,7 +91,7 @@ export function Provider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <RootProvider>
+    <RootProvider search={{ enabled: false }}>
       {children}
 
       {showThemeWarning && (
